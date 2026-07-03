@@ -100,7 +100,9 @@ Pre-built binaries are available on the [Releases](https://github.com/erikdarlin
 | macOS (Intel) | [PerformanceStudio-osx-x64.zip](https://github.com/erikdarlingdata/PerformanceStudio/releases/latest/download/PerformanceStudio-osx-x64.zip) |
 | Linux (x64) | [PerformanceStudio-linux-x64.zip](https://github.com/erikdarlingdata/PerformanceStudio/releases/latest/download/PerformanceStudio-linux-x64.zip) |
 
-These are self-contained — no .NET SDK required. Extract the zip and run.
+Windows and Linux release zips are self-contained: extract the archive and run the app.
+
+On macOS, prefer building from source and running with `dotnet run --project src/PlanViewer.App`. Unsigned or locally packaged GUI binaries can be blocked by Gatekeeper unless you sign and notarize them yourself.
 
 ## Build from Source
 
@@ -117,6 +119,54 @@ To verify the build:
 ```bash
 dotnet test tests/PlanViewer.Core.Tests    # 37 tests should pass
 dotnet run --project src/PlanViewer.Cli -- analyze --help
+```
+
+To run the desktop app on macOS:
+
+```bash
+dotnet run --project src/PlanViewer.App
+```
+
+## Package for Distribution
+
+Packaging is optional. For macOS desktop use, the recommended path is still `dotnet run --project src/PlanViewer.App` unless you plan to sign and notarize the app yourself.
+
+### GUI app — distributable folder
+
+Produces a self-contained folder with no .NET runtime dependency. Swap `osx-arm64` for `osx-x64`, `win-x64`, or `linux-x64` as needed.
+
+```bash
+dotnet publish src/PlanViewer.App/PlanViewer.App.csproj \
+  -c Release \
+  -r osx-arm64 \
+  --self-contained true \
+  -o dist/app/osx-arm64
+```
+
+Run directly from Terminal:
+
+```bash
+./dist/app/osx-arm64/PlanViewer.App
+```
+
+### CLI — single binary (`planview`)
+
+```bash
+dotnet publish src/PlanViewer.Cli/PlanViewer.Cli.csproj \
+  -c Release \
+  -r osx-arm64 \
+  --self-contained true \
+  -p:PublishSingleFile=true \
+  -o dist/cli/osx-arm64
+```
+
+Optionally install to your PATH:
+
+```bash
+mkdir -p "$HOME/.local/bin"
+cp dist/cli/osx-arm64/planview "$HOME/.local/bin/planview"
+chmod +x "$HOME/.local/bin/planview"
+planview analyze --help
 ```
 
 ## Quick Start
@@ -403,23 +453,55 @@ PerformanceStudio/
 Usage: planview analyze [<file>] [options]
 
 Arguments:
-  <file>    .sqlplan file, .sql file, or directory of .sql files
+  <file>    .sqlplan file, .sql file, directory of .sql files, or glob pattern
+            (e.g. queries/*FULL.sql)
 
 Options:
   --stdin                    Read plan XML from stdin
-  -o, --output <format>      json (default) or text
+  -o, --output <types>       Live mode: comma-separated file types to write — sqlplan, json, txt, csv
+                             (default: sqlplan,json,txt)
+                             File/stdin mode: stdout format — json (default) or txt
   --compact                  Compact JSON (no indentation)
   --warnings-only            Skip operator tree, only output warnings and indexes
-  -s, --server <name>        SQL Server name (matches credential store key)
-  -d, --database <name>      Database context for execution
+  -s, --server <name>        SQL Server name (or set PLANVIEW_SERVER in .env)
+  -d, --database <name>      Database context for execution (or set PLANVIEW_DATABASE in .env)
   -q, --query <sql>          Inline SQL text to execute
   --output-dir <path>        Directory for output files
   --estimated                Estimated plan only (query is NOT executed)
   --auth <type>              windows, sql, or entra (default: auto-detect)
-  --trust-cert               Trust server certificate
+  --trust-cert               Trust server certificate (or set PLANVIEW_TRUST_CERT=true in .env)
   --timeout <seconds>        Query timeout (default: 60)
-  --login <name>             SQL Server login (bypasses credential store)
-  --password <password>      SQL Server password (bypasses credential store)
+  --login <name>             SQL Server login — bypasses credential store (or set PLANVIEW_LOGIN in .env)
+  --password <password>      SQL Server password — bypasses credential store (or set PLANVIEW_PASSWORD in .env)
+  --config <path>            Path to .planview.json config file (overrides auto-discovery)
+  --repeat <n>               Execute each SQL input N times, saving outputs with a _001, _002 … suffix.
+                             Useful for warm-start or best-of-N comparisons. Requires live mode.
+  --what-if                  Show which files would be analysed and what outputs would be generated
+  --test-connection          Verify connectivity and show where each credential value was sourced from
+```
+
+### `planview query-store`
+
+```
+Usage: planview query-store [options]
+
+Options:
+  -s, --server <name>        SQL Server instance name (required)
+  -d, --database <name>      Database with Query Store enabled (required)
+  --top <n>                  Number of top queries to analyze (default: 25)
+  --order-by <metric>        Ranking metric: cpu, avg-cpu, duration, avg-duration, reads,
+                             avg-reads, writes, avg-writes, physical-reads, avg-physical-reads,
+                             memory, avg-memory, executions (default: cpu)
+  --hours-back <n>           Hours of history to analyze (default: 24)
+  --output-dir <path>        Directory for output files
+  -o, --output <format>      json or text (default: text)
+  --compact                  Compact JSON (no indentation)
+  --warnings-only            Skip operator tree, only output warnings and indexes
+  --auth <type>              windows, sql, or entra (default: auto-detect)
+  --trust-cert               Trust server certificate (or set PLANVIEW_TRUST_CERT=true in .env)
+  --login <name>             SQL Server login — bypasses credential store (or set PLANVIEW_LOGIN in .env)
+  --password <password>      SQL Server password — bypasses credential store (or set PLANVIEW_PASSWORD in .env)
+  --config <path>            Path to .planview.json config file (overrides auto-discovery)
 ```
 
 ### `planview credential`
@@ -429,6 +511,20 @@ planview credential add <server> --user <user> [-p <password>]
 planview credential list
 planview credential remove <server>
 ```
+
+## .env File
+
+Place a `.env` file in the directory where you run `planview` to set credentials without repeating them on every command:
+
+```env
+PLANVIEW_SERVER=myserver\SQLEXPRESS
+PLANVIEW_DATABASE=MyDb
+PLANVIEW_LOGIN=sa
+PLANVIEW_PASSWORD=YourPassword123
+PLANVIEW_TRUST_CERT=true
+```
+
+CLI flags always take precedence over `.env` values. The file supports `#` comments and quoted values.
 
 ## Authentication
 

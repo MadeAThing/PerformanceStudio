@@ -55,22 +55,22 @@ public static class QueryStoreCommand
             "--compact", "Compact JSON output");
 
         var warningsOnlyOption = new Option<bool>(
-            "--warnings-only", "Skip operator tree in output");
+            "--warnings-only", "Only output warnings and missing indexes, skip operator tree");
 
         var configOption = new Option<string?>(
-            "--config", "Path to .planview.json config file");
+            "--config", "Path to .planview.json config file (overrides auto-discovery)");
 
         var authOption = new Option<string?>(
-            "--auth", "Authentication: windows, sql, entra");
+            "--auth", "Authentication type: windows, sql, or entra (default: auto-detect)");
 
         var trustCertOption = new Option<bool>(
-            "--trust-cert", "Trust the server certificate");
+            "--trust-cert", "Trust server certificate (or set PLANVIEW_TRUST_CERT=true in .env)");
 
         var loginOption = new Option<string?>(
-            "--login", "SQL Server login (bypasses credential store)");
+            "--login", "SQL Server login — bypasses credential store (or set PLANVIEW_LOGIN in .env)");
 
         var passwordOption = new Option<string?>(
-            "--password", "SQL Server password");
+            "--password", "SQL Server password — bypasses credential store (or set PLANVIEW_PASSWORD in .env)");
 
         var cmd = new Command("query-store", "Analyze top queries from Query Store")
         {
@@ -97,6 +97,13 @@ public static class QueryStoreCommand
             var password = ctx.ParseResult.GetValueForOption(passwordOption);
 
             var analyzerConfig = ConfigLoader.Load(configPath);
+
+            // Load .env file if present (CLI args take precedence)
+            var env = AnalyzeCommand.LoadEnvFile();
+            login ??= env.GetValueOrDefault("PLANVIEW_LOGIN");
+            password ??= env.GetValueOrDefault("PLANVIEW_PASSWORD");
+            if (!trustCert && env.GetValueOrDefault("PLANVIEW_TRUST_CERT")?.Equals("true", StringComparison.OrdinalIgnoreCase) == true)
+                trustCert = true;
 
             // Build connection string
             string connectionString;

@@ -18,6 +18,27 @@
     <Copyright>Copyright (c) 2026 Erik Darling, Darling Data LLC</Copyright>
   </PropertyGroup>
 
+  <!--
+    Publish optimisations — only active during `dotnet publish`, no effect on `dotnet build`.
+
+    NOT included (require code changes first):
+      PublishTrimmed  — breaks System.Text.Json reflection; needs JsonSerializerContext source generator.
+      PublishAot      — blocked by System.CommandLine beta4 (predates AOT support).
+  -->
+  <PropertyGroup>
+    <!-- Bundle the runtime + app into a single executable. -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <!-- Compress the bundle (~30-40% smaller on disk). First launch decompresses to a cache; subsequent runs are fast. -->
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <!-- Pre-JIT hot paths at publish time: slightly larger binary but noticeably faster startup. -->
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <!--
+      InvariantGlobalization is intentionally NOT set here.
+      Microsoft.Data.SqlClient explicitly requires globalization support (TDS string handling)
+      and throws at startup if invariant mode is enabled.
+    -->
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
   </ItemGroup>

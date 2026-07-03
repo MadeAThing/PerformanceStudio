@@ -602,7 +602,36 @@ public static class ShowPlanParser
         }
     }
 
-    private static PlanNode ParseRelOp(XElement relOpEl)
+    /// <summary>
+    /// Iterative entry point — builds the full operator sub-tree rooted at
+    /// <paramref name="rootRelOpEl"/> using an explicit stack so that deeply-nested
+    /// plans (e.g. 40+ levels) do not cause a stack overflow.
+    /// </summary>
+    private static PlanNode ParseRelOp(XElement rootRelOpEl)
+    {
+        var root = CreatePlanNode(rootRelOpEl);
+
+        var stack = new Stack<(XElement El, PlanNode Parent)>();
+        var rootChildren = FindChildRelOps(rootRelOpEl).ToList();
+        for (int i = rootChildren.Count - 1; i >= 0; i--)
+            stack.Push((rootChildren[i], root));
+
+        while (stack.Count > 0)
+        {
+            var (el, parent) = stack.Pop();
+            var node = CreatePlanNode(el);
+            node.Parent = parent;
+            parent.Children.Add(node);
+
+            var children = FindChildRelOps(el).ToList();
+            for (int i = children.Count - 1; i >= 0; i--)
+                stack.Push((children[i], node));
+        }
+
+        return root;
+    }
+
+    private static PlanNode CreatePlanNode(XElement relOpEl)
     {
         var node = new PlanNode
         {
@@ -1328,14 +1357,6 @@ public static class ShowPlanParser
                     RowRequalifications = ParseLong(thread.Attribute("RowRequalifications")?.Value)
                 });
             }
-        }
-
-        // Recurse into child RelOps
-        foreach (var childRelOp in FindChildRelOps(relOpEl))
-        {
-            var childNode = ParseRelOp(childRelOp);
-            childNode.Parent = node;
-            node.Children.Add(childNode);
         }
 
         return node;
