@@ -44,6 +44,7 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _mcpCts;
     private int _queryCounter;
     private AppSettings _appSettings;
+    private readonly DispatcherTimer _statusBarTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private Point? _topLevelTabDragStart;
     private TabItem? _topLevelTabDragSource;
 
@@ -70,7 +71,11 @@ public partial class MainWindow : Window
         {
             UpdateEmptyOverlay();
             UpdateFileMenuState();
+            RefreshStatusBar();
         };
+
+        _statusBarTimer.Tick += (_, _) => RefreshStatusBar();
+        _statusBarTimer.Start();
 
         // Global hotkeys via tunnel routing so they fire before AvaloniaEdit consumes them
         AddHandler(KeyDownEvent, (_, e) =>
@@ -218,6 +223,7 @@ public partial class MainWindow : Window
         var label = $"Query {_queryCounter}";
 
         var session = new QuerySessionControl(_credentialService, _connectionStore);
+        WireQuerySessionStatusBar(session);
         var tab = CreateTab(label, session);
 
         MainTabControl.Items.Add(tab);
@@ -359,6 +365,7 @@ public partial class MainWindow : Window
 
             _queryCounter++;
             var session = new QuerySessionControl(_credentialService, _connectionStore);
+            WireQuerySessionStatusBar(session);
             session.QueryText = text;
             session.SourceFilePath = filePath;
 
@@ -1133,6 +1140,44 @@ public partial class MainWindow : Window
         return MainTabControl.SelectedItem is TabItem { Content: QuerySessionControl session }
             ? session
             : null;
+    }
+
+    private void WireQuerySessionStatusBar(QuerySessionControl session)
+    {
+        session.ExecutionStarted += (_, _) => RefreshStatusBar();
+        session.ExecutionFinished += (_, _) => RefreshStatusBar();
+    }
+
+    private void RefreshStatusBar()
+    {
+        var start = GetSelectedQuerySession()?.LastExecutionStart;
+        if (start is not DateTime startTime)
+        {
+            StatusBarStart.Text = "Start: —";
+            StatusBarDuration.Text = "Duration: —";
+            StatusBarEnd.Text = "End: —";
+            ToolTip.SetTip(StatusBarStart, null);
+            ToolTip.SetTip(StatusBarEnd, null);
+            return;
+        }
+
+        StatusBarStart.Text = $"Start: {startTime:HH:mm:ss}";
+        ToolTip.SetTip(StatusBarStart, startTime.ToString("yyyy-MM-dd HH:mm:ss"));
+
+        var end = GetSelectedQuerySession()?.LastExecutionEnd;
+        var elapsed = (end ?? DateTime.Now) - startTime;
+        StatusBarDuration.Text = $"Duration: {elapsed:hh\\:mm\\:ss}";
+
+        if (end is DateTime endTime)
+        {
+            StatusBarEnd.Text = $"End: {endTime:HH:mm:ss}";
+            ToolTip.SetTip(StatusBarEnd, endTime.ToString("yyyy-MM-dd HH:mm:ss"));
+        }
+        else
+        {
+            StatusBarEnd.Text = "End: —";
+            ToolTip.SetTip(StatusBarEnd, null);
+        }
     }
 
     private void UpdateFileMenuState()

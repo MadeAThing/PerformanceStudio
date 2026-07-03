@@ -37,6 +37,22 @@
             </MenuItem>
         </Menu>
 
+        <!-- Status bar -->
+        <Border DockPanel.Dock="Bottom" Background="{DynamicResource BackgroundDarkBrush}" Padding="10,4">
+            <StackPanel Orientation="Horizontal" Spacing="10">
+                <TextBlock x:Name="StatusBarStart" Text="Start: —" FontSize="11"
+                           Foreground="{DynamicResource ForegroundBrush}"/>
+                <TextBlock Text="|" FontSize="11" Opacity="0.4"
+                           Foreground="{DynamicResource ForegroundBrush}"/>
+                <TextBlock x:Name="StatusBarDuration" Text="Duration: —" FontSize="11"
+                           Foreground="{DynamicResource ForegroundBrush}"/>
+                <TextBlock Text="|" FontSize="11" Opacity="0.4"
+                           Foreground="{DynamicResource ForegroundBrush}"/>
+                <TextBlock x:Name="StatusBarEnd" Text="End: —" FontSize="11"
+                           Foreground="{DynamicResource ForegroundBrush}"/>
+            </StackPanel>
+        </Border>
+
         <!-- Top-level TabControl for query sessions and plan files -->
         <Grid>
             <TabControl x:Name="MainTabControl"

@@ -52,6 +52,24 @@ public partial class QuerySessionControl : UserControl
 
     public string? SourceFilePath { get; set; }
 
+    public event EventHandler? ExecutionStarted;
+    public event EventHandler? ExecutionFinished;
+    public DateTime? LastExecutionStart { get; private set; }
+    public DateTime? LastExecutionEnd { get; private set; }
+
+    private void BeginExecutionTracking()
+    {
+        LastExecutionStart = DateTime.Now;
+        LastExecutionEnd = null;
+        ExecutionStarted?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void EndExecutionTracking()
+    {
+        LastExecutionEnd = DateTime.Now;
+        ExecutionFinished?.Invoke(this, EventArgs.Empty);
+    }
+
     public QuerySessionControl(ICredentialService credentialService, ConnectionStore connectionStore)
     {
         _credentialService = credentialService;
@@ -613,6 +631,7 @@ public partial class QuerySessionControl : UserControl
         SubTabControl.SelectedItem = loadingTab;
         loadingContainer.Focus();
 
+        BeginExecutionTracking();
         try
         {
             var sw = Stopwatch.StartNew();
@@ -671,6 +690,10 @@ public partial class QuerySessionControl : UserControl
             statusLabel.Text = ex.Message.Length > 100 ? ex.Message[..100] + "..." : ex.Message;
             progressBar.IsVisible = false;
             cancelBtn.IsVisible = false;
+        }
+        finally
+        {
+            EndExecutionTracking();
         }
     }
 
@@ -1418,6 +1441,7 @@ public partial class QuerySessionControl : UserControl
         SubTabControl.SelectedItem = loadingTab;
         loadingContainer.Focus();
 
+        BeginExecutionTracking();
         try
         {
             var sw = Stopwatch.StartNew();
@@ -1464,6 +1488,7 @@ public partial class QuerySessionControl : UserControl
         finally
         {
             UpdatePlanTabButtonState();
+            EndExecutionTracking();
         }
     }
 
