@@ -1604,7 +1604,7 @@ public partial class MainWindow : Window
 
             var sw = System.Diagnostics.Stopwatch.StartNew();
 
-            var actualPlanXml = await ActualPlanExecutor.ExecuteForActualPlanAsync(
+            var (actualPlanXml, captureError) = await ActualPlanExecutor.ExecuteForActualPlanAsync(
                 connectionString, database, queryText,
                 viewer.RawXml, isolationLevel: null,
                 isAzureSqlDb: isAzure, timeoutSeconds: 0, cts.Token);
@@ -1613,7 +1613,9 @@ public partial class MainWindow : Window
 
             if (string.IsNullOrEmpty(actualPlanXml))
             {
-                statusText.Text = $"No actual plan returned ({sw.Elapsed.TotalSeconds:F1}s).";
+                statusText.Text = captureError != null
+                    ? $"Error: {captureError}"
+                    : $"No actual plan returned ({sw.Elapsed.TotalSeconds:F1}s).";
                 progressBar.IsVisible = false;
                 return;
             }
@@ -1624,6 +1626,9 @@ public partial class MainWindow : Window
             actualViewer.LoadPlan(actualPlanXml, "Actual Plan", queryText);
 
             tab.Content = CreatePlanTabContent(actualViewer);
+
+            if (captureError != null)
+                statusText.Text = $"Plan captured up to a failure ({sw.Elapsed.TotalSeconds:F1}s) — {captureError}";
         }
         catch (Exception ex)
         {

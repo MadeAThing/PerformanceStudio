@@ -33,8 +33,13 @@ public static class ActualPlanExecutor
     /// <param name="isAzureSqlDb">If true, skips USE [database] in the repro script.</param>
     /// <param name="timeoutSeconds">Command timeout in seconds.</param>
     /// <param name="cancellationToken">Cancellation token for user abort.</param>
-    /// <returns>The actual execution plan XML, or null if no plan was captured.</returns>
-    public static async Task<string?> ExecuteForActualPlanAsync(
+    /// <returns>
+    /// The actual execution plan XML (merged across whatever statements captured a plan
+    /// before any failure), plus an error message if execution stopped early. Either or
+    /// both may be non-null: a batch that fails partway still returns the plan fragments
+    /// captured up to that point alongside the SQL error that ended it.
+    /// </returns>
+    public static async Task<(string? PlanXml, string? ErrorMessage)> ExecuteForActualPlanAsync(
         string connectionString,
         string? databaseName,
         string queryText,
@@ -81,33 +86,50 @@ public static class ActualPlanExecutor
 
         /* Iterate all result sets. SET STATISTICS XML ON causes SQL Server to
            append a plan XML result set after each statement's data result set.
-           The plan result set has a single row with a single XML column. */
-        do
+           The plan result set has a single row with a single XML column.
+
+           A batch can fail partway through (e.g. a later statement references a
+           temp table dropped by an earlier one) — catch that here so whatever
+           plan fragments were already captured aren't thrown away along with
+           the exception. */
+        string? errorMessage = null;
+        try
         {
-            if (reader.FieldCount == 1 && await reader.ReadAsync(cancellationToken))
+            do
             {
-                var value = reader.GetValue(0)?.ToString();
-                if (value != null && value.TrimStart().StartsWith("<ShowPlanXML", StringComparison.Ordinal))
+                if (reader.FieldCount == 1 && await reader.ReadAsync(cancellationToken))
                 {
-                    /* This is a plan XML result set — capture it */
-                    capturedPlanXmls.Add(value);
+                    var value = reader.GetValue(0)?.ToString();
+                    if (value != null && value.TrimStart().StartsWith("<ShowPlanXML", StringComparison.Ordinal))
+                    {
+                        /* This is a plan XML result set — capture it */
+                        capturedPlanXmls.Add(value);
+                    }
+                    else
+                    {
+                        /* Data result set — consume and discard remaining rows */
+                        while (await reader.ReadAsync(cancellationToken)) { }
+                    }
                 }
                 else
                 {
-                    /* Data result set — consume and discard remaining rows */
+                    /* Multi-column data result set — consume and discard all rows */
                     while (await reader.ReadAsync(cancellationToken)) { }
                 }
             }
-            else
-            {
-                /* Multi-column data result set — consume and discard all rows */
-                while (await reader.ReadAsync(cancellationToken)) { }
-            }
+            while (await reader.NextResultAsync(cancellationToken));
         }
-        while (await reader.NextResultAsync(cancellationToken));
+        catch (SqlException ex)
+        {
+            errorMessage = ex.Message;
+        }
 
-        if (capturedPlanXmls.Count == 0) return null;
-        if (capturedPlanXmls.Count == 1) return capturedPlanXmls[0];
-        return EstimatedPlanExecutor.MergeShowPlanXmls(capturedPlanXmls);
+        string? resultPlanXml = capturedPlanXmls.Count switch
+        {
+            0 => null,
+            1 => capturedPlanXmls[0],
+            _ => EstimatedPlanExecutor.MergeShowPlanXmls(capturedPlanXmls)
+        };
+        return (resultPlanXml, errorMessage);
     }
 }

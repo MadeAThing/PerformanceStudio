@@ -705,14 +705,15 @@ public static class AnalyzeCommand
                     var sw = Stopwatch.StartNew();
 
                     string? planXml;
+                    string? captureError;
                     if (estimated)
                     {
-                        planXml = await EstimatedPlanExecutor.GetEstimatedPlanAsync(
+                        (planXml, captureError) = await EstimatedPlanExecutor.GetEstimatedPlanAsync(
                             connectionString, database, sqlText, timeout);
                     }
                     else
                     {
-                        planXml = await ActualPlanExecutor.ExecuteForActualPlanAsync(
+                        (planXml, captureError) = await ActualPlanExecutor.ExecuteForActualPlanAsync(
                             connectionString, database, sqlText,
                             planXml: null, isolationLevel: null,
                             isAzureSqlDb: isAzure, timeoutSeconds: timeout,
@@ -723,10 +724,15 @@ public static class AnalyzeCommand
 
                     if (string.IsNullOrEmpty(planXml))
                     {
-                        Console.Error.WriteLine($"NO PLAN ({sw.Elapsed.TotalSeconds:F1}s)");
+                        Console.Error.WriteLine(captureError != null
+                            ? $"ERROR: {captureError} ({sw.Elapsed.TotalSeconds:F1}s)"
+                            : $"NO PLAN ({sw.Elapsed.TotalSeconds:F1}s)");
                         errors++;
                         continue;
                     }
+
+                    if (captureError != null)
+                        Console.Error.Write($"(partial — {captureError}) ");
 
                     if (outputTypes.Contains("sqlplan"))
                         await File.WriteAllTextAsync(Path.Combine(outDir, $"{outputName}.sqlplan"), planXml);

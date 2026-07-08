@@ -636,6 +636,7 @@ public partial class QuerySessionControl : UserControl
         {
             var sw = Stopwatch.StartNew();
             string? planXml;
+            string? captureError;
 
             var isAzure = _serverConnection!.ServerName.Contains(".database.windows.net",
                               StringComparison.OrdinalIgnoreCase) ||
@@ -644,12 +645,12 @@ public partial class QuerySessionControl : UserControl
 
             if (estimated)
             {
-                planXml = await EstimatedPlanExecutor.GetEstimatedPlanAsync(
+                (planXml, captureError) = await EstimatedPlanExecutor.GetEstimatedPlanAsync(
                     _connectionString, _selectedDatabase, queryText, timeoutSeconds: 0, ct);
             }
             else
             {
-                planXml = await ActualPlanExecutor.ExecuteForActualPlanAsync(
+                (planXml, captureError) = await ActualPlanExecutor.ExecuteForActualPlanAsync(
                     _connectionString, _selectedDatabase, queryText,
                     planXml: null, isolationLevel: null,
                     isAzureSqlDb: isAzure, timeoutSeconds: 0, ct);
@@ -659,14 +660,18 @@ public partial class QuerySessionControl : UserControl
 
             if (string.IsNullOrEmpty(planXml))
             {
-                statusLabel.Text = $"No plan returned ({sw.Elapsed.TotalSeconds:F1}s)";
+                statusLabel.Text = captureError != null
+                    ? (captureError.Length > 100 ? captureError[..100] + "..." : captureError)
+                    : $"No plan returned ({sw.Elapsed.TotalSeconds:F1}s)";
                 progressBar.IsVisible = false;
                 cancelBtn.IsVisible = false;
                 return;
             }
 
             // Replace loading content with the plan viewer
-            SetStatus($"{planType} plan captured ({sw.Elapsed.TotalSeconds:F1}s)");
+            SetStatus(captureError != null
+                ? $"{planType} plan captured up to a failure ({sw.Elapsed.TotalSeconds:F1}s) — {captureError}"
+                : $"{planType} plan captured ({sw.Elapsed.TotalSeconds:F1}s)");
             var viewer = new PlanViewerControl();
             viewer.Metadata = _serverMetadata;
             viewer.LoadPlan(planXml, tabLabel, queryText);
@@ -1447,7 +1452,7 @@ public partial class QuerySessionControl : UserControl
             var sw = Stopwatch.StartNew();
             var isAzure = IsAzureConnection;
 
-            var actualPlanXml = await ActualPlanExecutor.ExecuteForActualPlanAsync(
+            var (actualPlanXml, captureError) = await ActualPlanExecutor.ExecuteForActualPlanAsync(
                 _connectionString, _selectedDatabase, queryText,
                 planXml, isolationLevel: null,
                 isAzureSqlDb: isAzure, timeoutSeconds: 0, ct);
@@ -1456,13 +1461,17 @@ public partial class QuerySessionControl : UserControl
 
             if (string.IsNullOrEmpty(actualPlanXml))
             {
-                statusLabel.Text = $"No actual plan returned ({sw.Elapsed.TotalSeconds:F1}s)";
+                statusLabel.Text = captureError != null
+                    ? (captureError.Length > 100 ? captureError[..100] + "..." : captureError)
+                    : $"No actual plan returned ({sw.Elapsed.TotalSeconds:F1}s)";
                 progressBar.IsVisible = false;
                 cancelBtn.IsVisible = false;
                 return;
             }
 
-            SetStatus($"Actual plan captured ({sw.Elapsed.TotalSeconds:F1}s)");
+            SetStatus(captureError != null
+                ? $"Actual plan captured up to a failure ({sw.Elapsed.TotalSeconds:F1}s) — {captureError}"
+                : $"Actual plan captured ({sw.Elapsed.TotalSeconds:F1}s)");
             var actualViewer = new PlanViewerControl();
             actualViewer.Metadata = _serverMetadata;
             actualViewer.LoadPlan(actualPlanXml, tabLabel, queryText);
