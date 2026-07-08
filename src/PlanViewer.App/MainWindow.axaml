@@ -27,6 +27,8 @@
                 <Separator/>
                 <MenuItem x:Name="RecentPlansMenu" Header="_Recent Plans"/>
                 <Separator/>
+                <MenuItem Header="_Manage Connections..." Click="ManageConnections_Click"/>
+                <Separator/>
                 <MenuItem Header="E_xit" Click="Exit_Click"
                           InputGesture="Alt+F4"/>
             </MenuItem>

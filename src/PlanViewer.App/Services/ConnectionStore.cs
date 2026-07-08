@@ -46,14 +46,17 @@ public class ConnectionStore
     {
         var connections = Load();
         var existing = connections.FirstOrDefault(c =>
-            c.ServerName.Equals(connection.ServerName, StringComparison.OrdinalIgnoreCase));
+            c.Id.Equals(connection.Id, StringComparison.OrdinalIgnoreCase));
 
         if (existing != null)
         {
+            existing.ServerName = connection.ServerName;
             existing.AuthenticationType = connection.AuthenticationType;
             existing.EncryptMode = connection.EncryptMode;
             existing.TrustServerCertificate = connection.TrustServerCertificate;
             existing.DisplayName = connection.DisplayName;
+            existing.Database = connection.Database;
+            existing.IsFavorite = connection.IsFavorite;
             existing.LastConnected = DateTime.Now;
         }
         else
@@ -63,6 +66,13 @@ public class ConnectionStore
             connections.Add(connection);
         }
 
+        Save(connections);
+    }
+
+    public void Delete(string id)
+    {
+        var connections = Load();
+        connections.RemoveAll(c => c.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
         Save(connections);
     }
 }

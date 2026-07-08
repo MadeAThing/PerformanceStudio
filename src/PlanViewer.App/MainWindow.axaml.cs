@@ -292,6 +292,12 @@ public partial class MainWindow : Window
         await PasteXmlAsync();
     }
 
+    private void ManageConnections_Click(object? sender, RoutedEventArgs e)
+    {
+        var dialog = new Dialogs.ManageConnectionsDialog(_credentialService, _connectionStore);
+        dialog.ShowDialog(this);
+    }
+
     private void Exit_Click(object? sender, RoutedEventArgs e)
     {
         Close();

@@ -16,11 +16,15 @@ public partial class ConnectionDialog : Window
     private readonly ICredentialService _credentialService;
     private readonly ConnectionStore _connectionStore;
     private List<ServerConnection> _savedConnections = new();
+    private Dictionary<string, ServerConnection> _byLabel = new(StringComparer.OrdinalIgnoreCase);
+    private string? _activeId;
+    private string? _pendingDatabase;
 
     public ServerConnection? ResultConnection { get; private set; }
     public string? ResultDatabase { get; private set; }
 
-    public ConnectionDialog(ICredentialService credentialService, ConnectionStore connectionStore)
+    public ConnectionDialog(ICredentialService credentialService, ConnectionStore connectionStore,
+        ServerConnection? initial = null, bool startBlank = false)
     {
         _credentialService = credentialService;
         _connectionStore = connectionStore;
@@ -28,14 +32,28 @@ public partial class ConnectionDialog : Window
 
         AuthTypeBox.SelectedIndex = 0;
         EncryptBox.SelectedIndex = 0;
-        PopulateSavedServers();
+        PopulateSavedServers(initial, startBlank);
     }
 
-    private void PopulateSavedServers()
+    private static string LabelFor(ServerConnection c) => c.DisplayName;
+
+    private void PopulateSavedServers(ServerConnection? initial, bool startBlank)
     {
         _savedConnections = _connectionStore.Load();
-        var serverNames = _savedConnections.Select(s => s.ServerName).Distinct().ToList();
-        ServerNameBox.ItemsSource = serverNames;
+        _byLabel = _savedConnections
+            .GroupBy(LabelFor, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+        ServerNameBox.ItemsSource = _byLabel.Keys.ToList();
+
+        if (initial != null)
+        {
+            ServerNameBox.Text = initial.ServerName;
+            ApplySavedConnection(initial);
+            return;
+        }
+
+        if (startBlank)
+            return;
 
         // Pre-fill the most recently used connection
         var mostRecent = _savedConnections
@@ -51,6 +69,9 @@ public partial class ConnectionDialog : Window
 
     private void ApplySavedConnection(ServerConnection saved)
     {
+        _activeId = saved.Id;
+        _pendingDatabase = saved.Database;
+
         // Auth type
         for (int i = 0; i < AuthTypeBox.Items.Count; i++)
         {
@@ -84,17 +105,31 @@ public partial class ConnectionDialog : Window
         }
     }
 
-    // When the user picks a saved server from the autocomplete dropdown
+    // When the user picks a saved connection from the autocomplete dropdown
     private void ServerName_SelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
-        var serverName = ServerNameBox.SelectedItem?.ToString();
-        if (string.IsNullOrEmpty(serverName)) return;
+        var label = ServerNameBox.SelectedItem?.ToString();
+        if (string.IsNullOrEmpty(label)) return;
 
-        var saved = _savedConnections.FirstOrDefault(s =>
-            s.ServerName.Equals(serverName, StringComparison.OrdinalIgnoreCase));
-
-        if (saved != null)
+        if (_byLabel.TryGetValue(label, out var saved))
+        {
+            ServerNameBox.Text = saved.ServerName;
             ApplySavedConnection(saved);
+        }
+    }
+
+    // Typing over a previously-applied saved connection's server name means
+    // the user wants a new/different profile, not to overwrite the applied one.
+    private void ServerName_TextChanged(object? sender, Avalonia.Controls.TextChangedEventArgs e)
+    {
+        if (_activeId == null) return;
+
+        var saved = _savedConnections.FirstOrDefault(s => s.Id == _activeId);
+        if (saved == null || !string.Equals(ServerNameBox.Text?.Trim(), saved.ServerName, StringComparison.OrdinalIgnoreCase))
+        {
+            _activeId = null;
+            _pendingDatabase = null;
+        }
     }
 
     private void AuthType_SelectionChanged(object? sender, SelectionChangedEventArgs e)
@@ -143,9 +178,15 @@ public partial class ConnectionDialog : Window
             DatabaseBox.IsEnabled = true;
             ConnectButton.IsEnabled = true;
 
-            // Default to master if available
-            var masterIdx = databases.IndexOf("master");
-            if (masterIdx >= 0) DatabaseBox.SelectedIndex = masterIdx;
+            // Prefer the saved profile's database, else default to master
+            var pendingIdx = _pendingDatabase != null ? databases.IndexOf(_pendingDatabase) : -1;
+            if (pendingIdx >= 0)
+                DatabaseBox.SelectedIndex = pendingIdx;
+            else
+            {
+                var masterIdx = databases.IndexOf("master");
+                if (masterIdx >= 0) DatabaseBox.SelectedIndex = masterIdx;
+            }
 
             StatusText.Text = $"Connected ({databases.Count} databases)";
             StatusText.Foreground = Avalonia.Media.Brushes.LimeGreen;
@@ -198,14 +239,22 @@ public partial class ConnectionDialog : Window
     private ServerConnection BuildServerConnection()
     {
         var serverName = ServerNameBox.Text?.Trim() ?? "";
+        var database = DatabaseBox.SelectedItem?.ToString();
+        var existing = _activeId != null
+            ? _savedConnections.FirstOrDefault(s => s.Id == _activeId)
+            : null;
+
         return new ServerConnection
         {
-            Id = serverName,
+            Id = _activeId ?? Guid.NewGuid().ToString(),
             ServerName = serverName,
-            DisplayName = serverName,
+            DisplayName = string.IsNullOrEmpty(database) ? serverName : $"{serverName} ({database})",
             AuthenticationType = GetSelectedAuthType(),
             TrustServerCertificate = TrustCertBox.IsChecked == true,
-            EncryptMode = GetSelectedEncryptMode()
+            EncryptMode = GetSelectedEncryptMode(),
+            Database = database,
+            CreatedDate = existing?.CreatedDate ?? DateTime.Now,
+            IsFavorite = existing?.IsFavorite ?? false
         };
     }
 

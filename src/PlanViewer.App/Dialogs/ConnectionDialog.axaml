@@ -17,7 +17,8 @@
                          Watermark="e.g. sql2022 or server.database.windows.net"
                          FontSize="13" Height="32" Margin="0,0,0,12"
                          FilterMode="ContainsOrdinal"
-                         SelectionChanged="ServerName_SelectionChanged"/>
+                         SelectionChanged="ServerName_SelectionChanged"
+                         TextChanged="ServerName_TextChanged"/>
 
         <!-- Authentication -->
         <TextBlock Grid.Row="2" Text="Authentication" Foreground="{DynamicResource ForegroundBrush}"
