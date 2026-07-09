@@ -55,6 +55,7 @@ public class ConnectionStore
             existing.EncryptMode = connection.EncryptMode;
             existing.TrustServerCertificate = connection.TrustServerCertificate;
             existing.DisplayName = connection.DisplayName;
+            existing.CustomDisplayName = connection.CustomDisplayName;
             existing.Database = connection.Database;
             existing.IsFavorite = connection.IsFavorite;
             existing.LastConnected = DateTime.Now;
