@@ -92,7 +92,7 @@ public partial class ConnectionDialog : Window
         LoginBox.Text = "";
         PasswordBox.Text = "";
         DatabaseBox.ItemsSource = null;
-        DatabaseBox.IsEnabled = false;
+        DatabaseBox.Text = "";
         ConnectButton.IsEnabled = false;
         StatusText.Text = "";
         ConnectionsList.SelectedItem = null;
@@ -215,23 +215,22 @@ public partial class ConnectionDialog : Window
 
         // Prefill the saved database immediately so Connect doesn't require a
         // fresh Test Connection round-trip. Test Connection still refreshes
-        // this with the live full database list.
+        // the suggestion list with the live full database list, when reachable.
         if (!string.IsNullOrEmpty(saved.Database))
         {
             DatabaseBox.ItemsSource = new List<string> { saved.Database };
-            DatabaseBox.SelectedIndex = 0;
-            DatabaseBox.IsEnabled = true;
-            ConnectButton.IsEnabled = true;
+            DatabaseBox.Text = saved.Database;
             StatusText.Text = "Loaded saved database — Test Connection to verify or browse others.";
             StatusText.Foreground = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.FromRgb(0xE4, 0xE6, 0xEB));
         }
         else
         {
             DatabaseBox.ItemsSource = null;
-            DatabaseBox.IsEnabled = false;
-            ConnectButton.IsEnabled = false;
+            DatabaseBox.Text = "";
             StatusText.Text = "";
         }
+
+        UpdateConnectEnabled();
 
         var listMatch = _savedConnections.FirstOrDefault(s => s.Id == saved.Id);
         if (listMatch != null && !ReferenceEquals(ConnectionsList.SelectedItem, listMatch))
@@ -263,6 +262,20 @@ public partial class ConnectionDialog : Window
             _activeId = null;
             _pendingDatabase = null;
         }
+
+        UpdateConnectEnabled();
+    }
+
+    private void DatabaseBox_TextChanged(object? sender, Avalonia.Controls.TextChangedEventArgs e)
+        => UpdateConnectEnabled();
+
+    // Server + database typed in is enough to connect — Test Connection is a
+    // convenience for browsing/validating, not a gate, since a restricted
+    // prod principal may not have access to enumerate databases at all.
+    private void UpdateConnectEnabled()
+    {
+        ConnectButton.IsEnabled = !string.IsNullOrWhiteSpace(ServerNameBox.Text)
+            && !string.IsNullOrWhiteSpace(DatabaseBox.Text);
     }
 
     private void AuthType_SelectionChanged(object? sender, SelectionChangedEventArgs e)
@@ -291,6 +304,8 @@ public partial class ConnectionDialog : Window
         StatusText.Foreground = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.FromRgb(0xE4, 0xE6, 0xEB));
         TestButton.IsEnabled = false;
 
+        var typedDatabase = DatabaseBox.Text?.Trim();
+
         try
         {
             var connection = BuildServerConnection();
@@ -299,43 +314,55 @@ public partial class ConnectionDialog : Window
             await using var conn = new SqlConnection(connectionString);
             await conn.OpenAsync();
 
-            // Fetch databases
-            var databases = new List<string>();
-            using var cmd = new SqlCommand(
-                "SELECT name FROM sys.databases WHERE state_desc = 'ONLINE' ORDER BY name", conn);
-            using var reader = await cmd.ExecuteReaderAsync();
-            while (await reader.ReadAsync())
-                databases.Add(reader.GetString(0));
-
-            DatabaseBox.ItemsSource = databases;
-            DatabaseBox.IsEnabled = true;
-            ConnectButton.IsEnabled = true;
-
-            // Prefer the saved profile's database, else default to master
-            var pendingIdx = _pendingDatabase != null ? databases.IndexOf(_pendingDatabase) : -1;
-            if (pendingIdx >= 0)
-                DatabaseBox.SelectedIndex = pendingIdx;
-            else
+            // Enumerate databases for the suggestion list. A restricted prod
+            // principal may not have access to master/sys.databases at all —
+            // that's not a connection failure, just no browse list.
+            try
             {
-                var masterIdx = databases.IndexOf("master");
-                if (masterIdx >= 0) DatabaseBox.SelectedIndex = masterIdx;
+                var databases = new List<string>();
+                using var cmd = new SqlCommand(
+                    "SELECT name FROM sys.databases WHERE state_desc = 'ONLINE' ORDER BY name", conn);
+                using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                    databases.Add(reader.GetString(0));
+
+                DatabaseBox.ItemsSource = databases;
+
+                if (string.IsNullOrEmpty(typedDatabase))
+                {
+                    var pendingIdx = _pendingDatabase != null ? databases.IndexOf(_pendingDatabase) : -1;
+                    if (pendingIdx >= 0)
+                        DatabaseBox.Text = databases[pendingIdx];
+                    else if (databases.Contains("master"))
+                        DatabaseBox.Text = "master";
+                }
+
+                StatusText.Text = $"Connected ({databases.Count} databases)";
+                StatusText.Foreground = Avalonia.Media.Brushes.LimeGreen;
+            }
+            catch (Exception listEx)
+            {
+                StatusText.Text = string.IsNullOrEmpty(typedDatabase)
+                    ? $"Connected, but can't list databases ({Truncate(listEx.Message)}). Type the database name."
+                    : $"Connected to '{typedDatabase}' (database list unavailable: {Truncate(listEx.Message)})";
+                StatusText.Foreground = Avalonia.Media.Brushes.LimeGreen;
             }
 
-            StatusText.Text = $"Connected ({databases.Count} databases)";
-            StatusText.Foreground = Avalonia.Media.Brushes.LimeGreen;
+            ConnectButton.IsEnabled = !string.IsNullOrWhiteSpace(ServerNameBox.Text)
+                && !string.IsNullOrWhiteSpace(DatabaseBox.Text);
         }
         catch (Exception ex)
         {
-            StatusText.Text = ex.Message.Length > 80 ? ex.Message[..80] + "..." : ex.Message;
+            StatusText.Text = Truncate(ex.Message);
             StatusText.Foreground = Avalonia.Media.Brushes.OrangeRed;
-            DatabaseBox.IsEnabled = false;
-            ConnectButton.IsEnabled = false;
         }
         finally
         {
             TestButton.IsEnabled = true;
         }
     }
+
+    private static string Truncate(string message) => message.Length > 80 ? message[..80] + "..." : message;
 
     private void Connect_Click(object? sender, RoutedEventArgs e)
     {
@@ -360,7 +387,7 @@ public partial class ConnectionDialog : Window
         _connectionStore.AddOrUpdate(connection);
 
         ResultConnection = connection;
-        ResultDatabase = DatabaseBox.SelectedItem?.ToString();
+        ResultDatabase = DatabaseBox.Text?.Trim();
         Close(true);
     }
 
@@ -372,7 +399,7 @@ public partial class ConnectionDialog : Window
     private ServerConnection BuildServerConnection()
     {
         var serverName = ServerNameBox.Text?.Trim() ?? "";
-        var database = DatabaseBox.SelectedItem?.ToString();
+        var database = DatabaseBox.Text?.Trim();
         var existing = _activeId != null
             ? _savedConnections.FirstOrDefault(s => s.Id == _activeId)
             : null;
@@ -416,7 +443,7 @@ public partial class ConnectionDialog : Window
         var builder = new SqlConnectionStringBuilder
         {
             DataSource = connection.ServerName,
-            InitialCatalog = "master",
+            InitialCatalog = string.IsNullOrEmpty(connection.Database) ? "master" : connection.Database,
             ApplicationName = "PlanViewer",
             ConnectTimeout = 15,
             TrustServerCertificate = connection.TrustServerCertificate,

@@ -114,9 +114,11 @@
             <!-- Database -->
             <TextBlock Grid.Row="8" Text="Database" Foreground="{DynamicResource ForegroundBrush}"
                        FontSize="12" Margin="0,0,0,4"/>
-            <ComboBox Grid.Row="9" x:Name="DatabaseBox" Height="32" FontSize="13"
-                      HorizontalAlignment="Stretch" Margin="0,0,0,12"
-                      IsEnabled="False" PlaceholderText="Connect first to load databases"/>
+            <AutoCompleteBox Grid.Row="9" x:Name="DatabaseBox"
+                             Watermark="Type a database name, or Test Connection to list them"
+                             FontSize="13" Height="32" Margin="0,0,0,12"
+                             FilterMode="ContainsOrdinal" MinimumPrefixLength="0"
+                             TextChanged="DatabaseBox_TextChanged"/>
 
             <!-- Spacer -->
             <Panel Grid.Row="10"/>
