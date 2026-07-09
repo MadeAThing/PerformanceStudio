@@ -8,6 +8,9 @@ Current fork-specific changes include:
 - query file save and save-as actions in the desktop app
 - top-level tab drag/drop behavior and related UI improvements
 - iterative app-level settings and session handling updates tied to those features
+- multiple saved SQL connections with a unified connect/manage dialog (rename, duplicate, delete, favorite)
+- freeform/dropdown database picker — type a database name directly instead of being limited to what a `master`-scoped enumeration returns, so restricted (non-`master`-access) logins can still connect
+- `scripts/build-mac-app.sh` — packages the GUI as a real, ad-hoc signed, double-clickable `.app` bundle for local macOS use
 
 Upstream source of truth: [erikdarlingdata/PerformanceStudio](https://github.com/erikdarlingdata/PerformanceStudio)
 
@@ -102,7 +105,7 @@ Pre-built binaries are available on the [Releases](https://github.com/erikdarlin
 
 Windows and Linux release zips are self-contained: extract the archive and run the app.
 
-On macOS, prefer building from source and running with `dotnet run --project src/PlanViewer.App`. Unsigned or locally packaged GUI binaries can be blocked by Gatekeeper unless you sign and notarize them yourself.
+On macOS, build from source and use `scripts/build-mac-app.sh` (see [Package for Distribution](#package-for-distribution)) to produce a proper, double-clickable `.app`. Gatekeeper blocks unsigned/unnotarized GUI binaries downloaded from elsewhere, but a locally built, ad-hoc signed app runs fine on the machine that built it.
 
 ## Build from Source
 
@@ -129,9 +132,20 @@ dotnet run --project src/PlanViewer.App
 
 ## Package for Distribution
 
-Packaging is optional. For macOS desktop use, the recommended path is still `dotnet run --project src/PlanViewer.App` unless you plan to sign and notarize the app yourself.
+Packaging is optional — `dotnet run --project src/PlanViewer.App` works fine for day-to-day dev. Package when you want a real double-clickable app.
 
-### GUI app — distributable folder
+### macOS — real `.app` bundle (local use)
+
+`scripts/build-mac-app.sh` publishes a self-contained single-file build, assembles a proper `Contents/MacOS` + `Contents/Resources` bundle, and ad-hoc codesigns it (`codesign --sign -`, no Apple Developer ID needed):
+
+```bash
+./scripts/build-mac-app.sh
+open "dist/app/Performance Studio.app"
+```
+
+This is local-machine-only: ad-hoc signing satisfies Gatekeeper on the Mac that built it, but the app still isn't notarized. Copy/AirDrop/download it to another machine and Gatekeeper will quarantine and block it — that requires a paid Apple Developer ID and notarization, which this project doesn't do.
+
+### GUI app — distributable folder (other platforms / manual builds)
 
 Produces a self-contained folder with no .NET runtime dependency. Swap `osx-arm64` for `osx-x64`, `win-x64`, or `linux-x64` as needed.
 
@@ -348,6 +362,7 @@ Features:
 - **Plan Comparison** — compare two plans side-by-side (cost, runtime, I/O, memory, wait stats)
 - **Copy Repro Script** — extracts parameters, SET options, and query text into a runnable `sp_executesql` script
 - **Get Actual Plan** — connect to a server and re-execute the query to capture runtime stats
+- **Saved connections** — split-pane connect dialog with a list of saved servers (rename, duplicate, delete, favorite); database field accepts freeform typed names or a dropdown of accessible databases, so restricted logins without `master` access still work
 - **Query Store Analysis** — connect to a server and analyze top queries by CPU, duration, or reads
 - **MCP Server** — built-in Model Context Protocol server for AI-assisted plan analysis (opt-in)
 - Dark theme
