@@ -215,6 +215,10 @@ public partial class MainWindow : Window
     private void UpdateEmptyOverlay()
     {
         EmptyOverlay.IsVisible = MainTabControl.Items.Count == 0;
+
+        // No query tabs left — next "Query N" should start at 1 again.
+        if (MainTabControl.Items.Count == 0)
+            _queryCounter = 0;
     }
 
     private void NewQuery_Click(object? sender, RoutedEventArgs e)

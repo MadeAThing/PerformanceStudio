@@ -993,6 +993,13 @@ public partial class QuerySessionControl : UserControl
                 planCount++;
         }
         ComparePlansButton.IsEnabled = planCount >= 2;
+
+        // No plan tabs left for this query — next "Plan N" / "Est Plan N" should start at 1 again.
+        var anyPlanTab = SubTabControl.Items.Cast<object>()
+            .OfType<TabItem>()
+            .Any(t => t.Content is PlanViewerControl);
+        if (!anyPlanTab)
+            _planCounter = 0;
     }
 
     public IEnumerable<(string label, PlanViewerControl viewer)> GetPlanTabs()
