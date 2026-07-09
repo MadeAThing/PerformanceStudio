@@ -18,6 +18,7 @@ public class ServerConnection
     public string EncryptMode { get; set; } = "Mandatory";
     public bool TrustServerCertificate { get; set; } = false;
     public string? Database { get; set; }
+    public bool CustomDisplayName { get; set; }
 
     [JsonIgnore]
     public string AuthenticationDisplay => AuthenticationType switch

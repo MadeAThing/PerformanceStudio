@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Interactivity;
 using Microsoft.Data.SqlClient;
 using PlanViewer.App.Services;
@@ -39,11 +40,7 @@ public partial class ConnectionDialog : Window
 
     private void PopulateSavedServers(ServerConnection? initial, bool startBlank)
     {
-        _savedConnections = _connectionStore.Load();
-        _byLabel = _savedConnections
-            .GroupBy(LabelFor, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
-        ServerNameBox.ItemsSource = _byLabel.Keys.ToList();
+        RefreshList();
 
         if (initial != null)
         {
@@ -65,6 +62,118 @@ public partial class ConnectionDialog : Window
             ServerNameBox.Text = mostRecent.ServerName;
             ApplySavedConnection(mostRecent);
         }
+    }
+
+    // Reloads saved connections from disk into both the autocomplete source
+    // and the left-hand list, optionally re-selecting a specific entry.
+    private void RefreshList(string? keepSelectedId = null)
+    {
+        _savedConnections = _connectionStore.Load();
+        _byLabel = _savedConnections
+            .GroupBy(LabelFor, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+        ServerNameBox.ItemsSource = _byLabel.Keys.ToList();
+
+        var ordered = _savedConnections.OrderByDescending(c => c.LastConnected).ToList();
+        ConnectionsList.ItemsSource = ordered;
+
+        if (keepSelectedId != null)
+            ConnectionsList.SelectedItem = ordered.FirstOrDefault(c => c.Id == keepSelectedId);
+    }
+
+    private void ClearForm()
+    {
+        _activeId = null;
+        _pendingDatabase = null;
+        ServerNameBox.Text = "";
+        AuthTypeBox.SelectedIndex = 0;
+        EncryptBox.SelectedIndex = 0;
+        TrustCertBox.IsChecked = false;
+        LoginBox.Text = "";
+        PasswordBox.Text = "";
+        DatabaseBox.ItemsSource = null;
+        DatabaseBox.IsEnabled = false;
+        ConnectButton.IsEnabled = false;
+        StatusText.Text = "";
+        ConnectionsList.SelectedItem = null;
+    }
+
+    private void New_Click(object? sender, RoutedEventArgs e) => ClearForm();
+
+    // When the user picks a saved connection from the left-hand list
+    private void ConnectionsList_SelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (ConnectionsList.SelectedItem is ServerConnection saved)
+        {
+            ServerNameBox.Text = saved.ServerName;
+            ApplySavedConnection(saved);
+        }
+    }
+
+    private async void Rename_Click(object? sender, RoutedEventArgs e)
+    {
+        if ((sender as Button)?.Tag is not ServerConnection connection) return;
+
+        var dialog = new RenameConnectionDialog(connection.DisplayName);
+        var result = await dialog.ShowDialog<bool?>(this);
+        if (result == true && dialog.ResultName != null)
+        {
+            connection.DisplayName = dialog.ResultName;
+            connection.CustomDisplayName = true;
+            _connectionStore.AddOrUpdate(connection);
+            RefreshList(connection.Id);
+        }
+    }
+
+    private void Duplicate_Click(object? sender, RoutedEventArgs e)
+    {
+        if ((sender as Button)?.Tag is not ServerConnection connection) return;
+
+        var clone = new ServerConnection
+        {
+            Id = Guid.NewGuid().ToString(),
+            ServerName = connection.ServerName,
+            DisplayName = connection.DisplayName,
+            CustomDisplayName = connection.CustomDisplayName,
+            AuthenticationType = connection.AuthenticationType,
+            EncryptMode = connection.EncryptMode,
+            TrustServerCertificate = connection.TrustServerCertificate,
+            Database = connection.Database
+        };
+
+        var cred = _credentialService.GetCredential(connection.Id);
+        if (cred != null)
+            _credentialService.SaveCredential(clone.Id, cred.Value.Username, cred.Value.Password);
+
+        _connectionStore.AddOrUpdate(clone);
+        RefreshList(clone.Id);
+    }
+
+    private void Delete_Click(object? sender, RoutedEventArgs e)
+    {
+        if ((sender as Button)?.Tag is not ServerConnection connection) return;
+
+        _connectionStore.Delete(connection.Id);
+        _credentialService.DeleteCredential(connection.Id);
+
+        if (_activeId == connection.Id)
+        {
+            ClearForm();
+            RefreshList();
+        }
+        else
+        {
+            RefreshList(_activeId);
+        }
+    }
+
+    private void Favorite_Click(object? sender, RoutedEventArgs e)
+    {
+        if ((sender as ToggleButton)?.Tag is not ServerConnection connection) return;
+
+        connection.IsFavorite = !connection.IsFavorite;
+        _connectionStore.AddOrUpdate(connection);
+        RefreshList(connection.Id);
     }
 
     private void ApplySavedConnection(ServerConnection saved)
@@ -103,6 +212,30 @@ public partial class ConnectionDialog : Window
             LoginBox.Text = cred.Value.Username;
             PasswordBox.Text = cred.Value.Password;
         }
+
+        // Prefill the saved database immediately so Connect doesn't require a
+        // fresh Test Connection round-trip. Test Connection still refreshes
+        // this with the live full database list.
+        if (!string.IsNullOrEmpty(saved.Database))
+        {
+            DatabaseBox.ItemsSource = new List<string> { saved.Database };
+            DatabaseBox.SelectedIndex = 0;
+            DatabaseBox.IsEnabled = true;
+            ConnectButton.IsEnabled = true;
+            StatusText.Text = "Loaded saved database — Test Connection to verify or browse others.";
+            StatusText.Foreground = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.FromRgb(0xE4, 0xE6, 0xEB));
+        }
+        else
+        {
+            DatabaseBox.ItemsSource = null;
+            DatabaseBox.IsEnabled = false;
+            ConnectButton.IsEnabled = false;
+            StatusText.Text = "";
+        }
+
+        var listMatch = _savedConnections.FirstOrDefault(s => s.Id == saved.Id);
+        if (listMatch != null && !ReferenceEquals(ConnectionsList.SelectedItem, listMatch))
+            ConnectionsList.SelectedItem = listMatch;
     }
 
     // When the user picks a saved connection from the autocomplete dropdown
@@ -244,11 +377,17 @@ public partial class ConnectionDialog : Window
             ? _savedConnections.FirstOrDefault(s => s.Id == _activeId)
             : null;
 
+        var customName = existing?.CustomDisplayName ?? false;
+        var displayName = customName
+            ? existing!.DisplayName
+            : (string.IsNullOrEmpty(database) ? serverName : $"{serverName} ({database})");
+
         return new ServerConnection
         {
             Id = _activeId ?? Guid.NewGuid().ToString(),
             ServerName = serverName,
-            DisplayName = string.IsNullOrEmpty(database) ? serverName : $"{serverName} ({database})",
+            DisplayName = displayName,
+            CustomDisplayName = customName,
             AuthenticationType = GetSelectedAuthType(),
             TrustServerCertificate = TrustCertBox.IsChecked == true,
             EncryptMode = GetSelectedEncryptMode(),

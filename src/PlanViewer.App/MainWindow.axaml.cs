@@ -294,7 +294,7 @@ public partial class MainWindow : Window
 
     private void ManageConnections_Click(object? sender, RoutedEventArgs e)
     {
-        var dialog = new Dialogs.ManageConnectionsDialog(_credentialService, _connectionStore);
+        var dialog = new Dialogs.ConnectionDialog(_credentialService, _connectionStore, startBlank: true);
         dialog.ShowDialog(this);
     }
 

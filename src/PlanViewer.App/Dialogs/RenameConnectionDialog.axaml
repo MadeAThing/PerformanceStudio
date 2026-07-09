@@ -1,0 +1,27 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="PlanViewer.App.Dialogs.RenameConnectionDialog"
+        Title="Rename Connection"
+        Width="360" Height="160"
+        MinWidth="360" MinHeight="160"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False"
+        Icon="avares://PlanViewer.App/EDD.ico"
+        Background="{DynamicResource BackgroundBrush}">
+
+    <Grid Margin="20" RowDefinitions="Auto,Auto,*,Auto">
+        <TextBlock Grid.Row="0" Text="Connection name" Foreground="{DynamicResource ForegroundBrush}"
+                   FontSize="12" Margin="0,0,0,4"/>
+        <TextBox Grid.Row="1" x:Name="NameBox" FontSize="13" Height="32"
+                 KeyDown="NameBox_KeyDown"/>
+
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+            <Button Content="OK" Click="Ok_Click" IsDefault="True"
+                    Height="32" Padding="20,0" FontSize="13"
+                    Theme="{StaticResource AppButton}"/>
+            <Button Content="Cancel" Click="Cancel_Click" IsCancel="True"
+                    Height="32" Padding="20,0" FontSize="13"
+                    Theme="{StaticResource AppButton}"/>
+        </StackPanel>
+    </Grid>
+</Window>
