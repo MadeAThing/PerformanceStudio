@@ -54,22 +54,24 @@ public partial class QuerySessionControl : UserControl
 
     public event EventHandler? ExecutionStarted;
     public event EventHandler? ExecutionFinished;
-    public DateTime? LastExecutionStart { get; private set; }
-    public DateTime? LastExecutionEnd { get; private set; }
-    public int? LastExecutionSpid { get; private set; }
+    public event EventHandler? PlanFocusChanged;
 
-    private void BeginExecutionTracking()
+    /// <summary>Start/end/SPID for one plan tab's capture. Stashed on TabItem.Tag so it
+    /// survives the tab's loading-container-to-PlanViewerControl content swap.</summary>
+    private sealed class PlanExecutionInfo
     {
-        LastExecutionStart = DateTime.Now;
-        LastExecutionEnd = null;
-        LastExecutionSpid = null;
-        ExecutionStarted?.Invoke(this, EventArgs.Empty);
+        public DateTime Start { get; init; }
+        public DateTime? End { get; set; }
+        public int? Spid { get; set; }
     }
 
-    private void EndExecutionTracking()
+    /// <summary>Execution info for whichever plan tab is currently focused, or null if
+    /// the Editor tab (or no tab) is selected.</summary>
+    public (DateTime Start, DateTime? End, int? Spid)? GetFocusedPlanExecution()
     {
-        LastExecutionEnd = DateTime.Now;
-        ExecutionFinished?.Invoke(this, EventArgs.Empty);
+        if (SubTabControl.SelectedItem is TabItem { Tag: PlanExecutionInfo info })
+            return (info.Start, info.End, info.Spid);
+        return null;
     }
 
     public QuerySessionControl(ICredentialService credentialService, ConnectionStore connectionStore)
@@ -111,6 +113,7 @@ public partial class QuerySessionControl : UserControl
                 QueryEditor.TextArea.Focus();
             }
             UpdatePlanTabButtonState();
+            PlanFocusChanged?.Invoke(this, EventArgs.Empty);
         };
     }
 
@@ -629,11 +632,14 @@ public partial class QuerySessionControl : UserControl
         closeBtn.Tag = loadingTab;
         closeBtn.Click += ClosePlanTab_Click;
 
+        var execInfo = new PlanExecutionInfo { Start = DateTime.Now };
+        loadingTab.Tag = execInfo;
+
         SubTabControl.Items.Add(loadingTab);
         SubTabControl.SelectedItem = loadingTab;
         loadingContainer.Focus();
 
-        BeginExecutionTracking();
+        ExecutionStarted?.Invoke(this, EventArgs.Empty);
         try
         {
             var sw = Stopwatch.StartNew();
@@ -649,7 +655,7 @@ public partial class QuerySessionControl : UserControl
             {
                 (planXml, captureError) = await EstimatedPlanExecutor.GetEstimatedPlanAsync(
                     _connectionString, _selectedDatabase, queryText, timeoutSeconds: 0, ct,
-                    onConnected: spid => LastExecutionSpid = spid);
+                    onConnected: spid => execInfo.Spid = spid);
             }
             else
             {
@@ -657,7 +663,7 @@ public partial class QuerySessionControl : UserControl
                     _connectionString, _selectedDatabase, queryText,
                     planXml: null, isolationLevel: null,
                     isAzureSqlDb: isAzure, timeoutSeconds: 0, ct,
-                    onConnected: spid => LastExecutionSpid = spid);
+                    onConnected: spid => execInfo.Spid = spid);
             }
 
             sw.Stop();
@@ -702,7 +708,8 @@ public partial class QuerySessionControl : UserControl
         }
         finally
         {
-            EndExecutionTracking();
+            execInfo.End = DateTime.Now;
+            ExecutionFinished?.Invoke(this, EventArgs.Empty);
         }
     }
 
@@ -1453,11 +1460,14 @@ public partial class QuerySessionControl : UserControl
         closeBtn.Tag = loadingTab;
         closeBtn.Click += ClosePlanTab_Click;
 
+        var execInfo = new PlanExecutionInfo { Start = DateTime.Now };
+        loadingTab.Tag = execInfo;
+
         SubTabControl.Items.Add(loadingTab);
         SubTabControl.SelectedItem = loadingTab;
         loadingContainer.Focus();
 
-        BeginExecutionTracking();
+        ExecutionStarted?.Invoke(this, EventArgs.Empty);
         try
         {
             var sw = Stopwatch.StartNew();
@@ -1467,7 +1477,7 @@ public partial class QuerySessionControl : UserControl
                 _connectionString, _selectedDatabase, queryText,
                 planXml, isolationLevel: null,
                 isAzureSqlDb: isAzure, timeoutSeconds: 0, ct,
-                onConnected: spid => LastExecutionSpid = spid);
+                onConnected: spid => execInfo.Spid = spid);
 
             sw.Stop();
 
@@ -1509,7 +1519,8 @@ public partial class QuerySessionControl : UserControl
         finally
         {
             UpdatePlanTabButtonState();
-            EndExecutionTracking();
+            execInfo.End = DateTime.Now;
+            ExecutionFinished?.Invoke(this, EventArgs.Empty);
         }
     }
 

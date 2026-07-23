@@ -1156,15 +1156,17 @@ public partial class MainWindow : Window
     {
         session.ExecutionStarted += (_, _) => RefreshStatusBar();
         session.ExecutionFinished += (_, _) => RefreshStatusBar();
+        session.PlanFocusChanged += (_, _) => RefreshStatusBar();
     }
 
     private void RefreshStatusBar()
     {
         var session = GetSelectedQuerySession();
-        StatusBarSpid.Text = session?.LastExecutionSpid is int spid ? $"SPID: {spid}" : "SPID: —";
+        var exec = session?.GetFocusedPlanExecution();
 
-        var start = session?.LastExecutionStart;
-        if (start is not DateTime startTime)
+        StatusBarSpid.Text = exec?.Spid is int spid ? $"SPID: {spid}" : "SPID: —";
+
+        if (exec is not { } e)
         {
             StatusBarStart.Text = "Start: —";
             StatusBarDuration.Text = "Duration: —";
@@ -1174,14 +1176,13 @@ public partial class MainWindow : Window
             return;
         }
 
-        StatusBarStart.Text = $"Start: {startTime:HH:mm:ss}";
-        ToolTip.SetTip(StatusBarStart, startTime.ToString("yyyy-MM-dd HH:mm:ss"));
+        StatusBarStart.Text = $"Start: {e.Start:HH:mm:ss}";
+        ToolTip.SetTip(StatusBarStart, e.Start.ToString("yyyy-MM-dd HH:mm:ss"));
 
-        var end = session?.LastExecutionEnd;
-        var elapsed = (end ?? DateTime.Now) - startTime;
+        var elapsed = (e.End ?? DateTime.Now) - e.Start;
         StatusBarDuration.Text = $"Duration: {elapsed:hh\\:mm\\:ss}";
 
-        if (end is DateTime endTime)
+        if (e.End is DateTime endTime)
         {
             StatusBarEnd.Text = $"End: {endTime:HH:mm:ss}";
             ToolTip.SetTip(StatusBarEnd, endTime.ToString("yyyy-MM-dd HH:mm:ss"));

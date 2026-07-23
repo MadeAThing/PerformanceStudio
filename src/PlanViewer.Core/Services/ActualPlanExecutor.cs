@@ -73,7 +73,13 @@ public static class ActualPlanExecutor
 
         await using var connection = new SqlConnection(builder.ConnectionString);
         await connection.OpenAsync(cancellationToken);
-        onConnected?.Invoke(connection.ServerProcessId);
+
+        if (onConnected != null)
+        {
+            await using var spidCommand = new SqlCommand("SELECT @@SPID", connection);
+            var spid = await spidCommand.ExecuteScalarAsync(cancellationToken);
+            onConnected(Convert.ToInt32(spid));
+        }
 
         using var command = new SqlCommand(fullScript, connection);
         command.CommandTimeout = timeoutSeconds;

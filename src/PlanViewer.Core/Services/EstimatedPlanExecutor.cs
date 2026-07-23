@@ -37,7 +37,13 @@ public static class EstimatedPlanExecutor
 
         await using var connection = new SqlConnection(builder.ConnectionString);
         await connection.OpenAsync(cancellationToken);
-        onConnected?.Invoke(connection.ServerProcessId);
+
+        if (onConnected != null)
+        {
+            await using var spidCommand = new SqlCommand("SELECT @@SPID", connection);
+            var spid = await spidCommand.ExecuteScalarAsync(cancellationToken);
+            onConnected(Convert.ToInt32(spid));
+        }
 
         // Enable SHOWPLAN XML — subsequent executes return plan, not results
         using (var enableCmd = new SqlCommand("SET SHOWPLAN_XML ON", connection))
