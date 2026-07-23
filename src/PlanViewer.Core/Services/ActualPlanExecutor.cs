@@ -47,7 +47,8 @@ public static class ActualPlanExecutor
         string? isolationLevel,
         bool isAzureSqlDb,
         int timeoutSeconds,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Action<int>? onConnected = null)
     {
         /* Build the repro script (includes SET options from plan XML via #233) */
         var reproScript = ReproScriptBuilder.BuildReproScript(
@@ -72,6 +73,7 @@ public static class ActualPlanExecutor
 
         await using var connection = new SqlConnection(builder.ConnectionString);
         await connection.OpenAsync(cancellationToken);
+        onConnected?.Invoke(connection.ServerProcessId);
 
         using var command = new SqlCommand(fullScript, connection);
         command.CommandTimeout = timeoutSeconds;

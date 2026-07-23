@@ -56,11 +56,13 @@ public partial class QuerySessionControl : UserControl
     public event EventHandler? ExecutionFinished;
     public DateTime? LastExecutionStart { get; private set; }
     public DateTime? LastExecutionEnd { get; private set; }
+    public int? LastExecutionSpid { get; private set; }
 
     private void BeginExecutionTracking()
     {
         LastExecutionStart = DateTime.Now;
         LastExecutionEnd = null;
+        LastExecutionSpid = null;
         ExecutionStarted?.Invoke(this, EventArgs.Empty);
     }
 
@@ -646,14 +648,16 @@ public partial class QuerySessionControl : UserControl
             if (estimated)
             {
                 (planXml, captureError) = await EstimatedPlanExecutor.GetEstimatedPlanAsync(
-                    _connectionString, _selectedDatabase, queryText, timeoutSeconds: 0, ct);
+                    _connectionString, _selectedDatabase, queryText, timeoutSeconds: 0, ct,
+                    onConnected: spid => LastExecutionSpid = spid);
             }
             else
             {
                 (planXml, captureError) = await ActualPlanExecutor.ExecuteForActualPlanAsync(
                     _connectionString, _selectedDatabase, queryText,
                     planXml: null, isolationLevel: null,
-                    isAzureSqlDb: isAzure, timeoutSeconds: 0, ct);
+                    isAzureSqlDb: isAzure, timeoutSeconds: 0, ct,
+                    onConnected: spid => LastExecutionSpid = spid);
             }
 
             sw.Stop();
@@ -1462,7 +1466,8 @@ public partial class QuerySessionControl : UserControl
             var (actualPlanXml, captureError) = await ActualPlanExecutor.ExecuteForActualPlanAsync(
                 _connectionString, _selectedDatabase, queryText,
                 planXml, isolationLevel: null,
-                isAzureSqlDb: isAzure, timeoutSeconds: 0, ct);
+                isAzureSqlDb: isAzure, timeoutSeconds: 0, ct,
+                onConnected: spid => LastExecutionSpid = spid);
 
             sw.Stop();
 

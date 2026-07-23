@@ -1160,7 +1160,10 @@ public partial class MainWindow : Window
 
     private void RefreshStatusBar()
     {
-        var start = GetSelectedQuerySession()?.LastExecutionStart;
+        var session = GetSelectedQuerySession();
+        StatusBarSpid.Text = session?.LastExecutionSpid is int spid ? $"SPID: {spid}" : "SPID: —";
+
+        var start = session?.LastExecutionStart;
         if (start is not DateTime startTime)
         {
             StatusBarStart.Text = "Start: —";
@@ -1174,7 +1177,7 @@ public partial class MainWindow : Window
         StatusBarStart.Text = $"Start: {startTime:HH:mm:ss}";
         ToolTip.SetTip(StatusBarStart, startTime.ToString("yyyy-MM-dd HH:mm:ss"));
 
-        var end = GetSelectedQuerySession()?.LastExecutionEnd;
+        var end = session?.LastExecutionEnd;
         var elapsed = (end ?? DateTime.Now) - startTime;
         StatusBarDuration.Text = $"Duration: {elapsed:hh\\:mm\\:ss}";
 

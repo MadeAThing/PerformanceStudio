@@ -28,7 +28,8 @@ public static class EstimatedPlanExecutor
         string databaseName,
         string queryText,
         int timeoutSeconds = 30,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Action<int>? onConnected = null)
     {
         var builder = new SqlConnectionStringBuilder(connectionString);
         if (!string.IsNullOrEmpty(databaseName))
@@ -36,6 +37,7 @@ public static class EstimatedPlanExecutor
 
         await using var connection = new SqlConnection(builder.ConnectionString);
         await connection.OpenAsync(cancellationToken);
+        onConnected?.Invoke(connection.ServerProcessId);
 
         // Enable SHOWPLAN XML — subsequent executes return plan, not results
         using (var enableCmd = new SqlCommand("SET SHOWPLAN_XML ON", connection))
