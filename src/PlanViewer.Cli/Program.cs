@@ -18,6 +18,7 @@ var root = new RootCommand("SQL Server execution plan analyzer")
 {
     AnalyzeCommand.Create(credentialService),
     QueryStoreCommand.Create(credentialService),
+    CaptureCommand.Create(credentialService),
 };
 
 if (credentialService != null)
