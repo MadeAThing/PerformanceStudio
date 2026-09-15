@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using System.IO.Pipes;
 using System.Linq;
 using System.Text.Json;
@@ -245,17 +246,17 @@ public partial class MainWindow : Window
             AllowMultiple = true,
             FileTypeFilter = new[]
             {
-                new FilePickerFileType("Supported Files (.sqlplan, .sql, .xml)")
+                new FilePickerFileType("Supported Files (.sqlplan, .sqlplan.gz, .sql, .xml)")
                 {
-                    Patterns = new[] { "*.sqlplan", "*.sql", "*.xml" },
-                    MimeTypes = new[] { "application/sql", "text/x-sql", "text/plain", "application/xml", "text/xml" },
-                    AppleUniformTypeIdentifiers = new[] { "public.sql", "public.plain-text", "public.xml", "public.text" }
+                    Patterns = new[] { "*.sqlplan", "*.sqlplan.gz", "*.sql", "*.xml" },
+                    MimeTypes = new[] { "application/sql", "text/x-sql", "text/plain", "application/xml", "text/xml", "application/gzip" },
+                    AppleUniformTypeIdentifiers = new[] { "public.sql", "public.plain-text", "public.xml", "public.text", "org.gnu.gnu-zip-archive" }
                 },
                 new FilePickerFileType("SQL Server Execution Plans")
                 {
-                    Patterns = new[] { "*.sqlplan" },
-                    MimeTypes = new[] { "application/xml", "text/xml" },
-                    AppleUniformTypeIdentifiers = new[] { "public.xml", "public.text" }
+                    Patterns = new[] { "*.sqlplan", "*.sqlplan.gz" },
+                    MimeTypes = new[] { "application/xml", "text/xml", "application/gzip" },
+                    AppleUniformTypeIdentifiers = new[] { "public.xml", "public.text", "org.gnu.gnu-zip-archive" }
                 },
                 new FilePickerFileType("SQL Scripts")
                 {
@@ -314,7 +315,7 @@ public partial class MainWindow : Window
     }
 
 #pragma warning disable CS0618 // Data/DataFormats.Files deprecated but IDataTransfer API differs
-    private static readonly string[] _supportedExtensions = { ".sqlplan", ".xml", ".sql" };
+    private static readonly string[] _supportedExtensions = { ".sqlplan", ".xml", ".sql", ".sqlplan.gz", ".gz" };
 
     private static bool IsSupportedFile(string? path)
     {
@@ -416,11 +417,31 @@ public partial class MainWindow : Window
         }
     }
 
+    private static string ReadPlanFileText(string filePath)
+    {
+        using var stream = File.OpenRead(filePath);
+
+        Span<byte> magic = stackalloc byte[2];
+        int read = stream.Read(magic);
+        stream.Position = 0;
+
+        bool isGzip = read == 2 && magic[0] == 0x1F && magic[1] == 0x8B;
+        if (isGzip)
+        {
+            using var gzip = new GZipStream(stream, CompressionMode.Decompress);
+            using var gzipReader = new StreamReader(gzip);
+            return gzipReader.ReadToEnd();
+        }
+
+        using var reader = new StreamReader(stream, detectEncodingFromByteOrderMarks: true);
+        return reader.ReadToEnd();
+    }
+
     private void LoadPlanFile(string filePath)
     {
         try
         {
-            var xml = File.ReadAllText(filePath);
+            var xml = ReadPlanFileText(filePath);
 
             // SSMS saves plans as UTF-16 with encoding="utf-16" in the XML declaration.
             // File.ReadAllText auto-detects the BOM, but the resulting C# string still

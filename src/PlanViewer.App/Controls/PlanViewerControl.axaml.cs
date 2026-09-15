@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Text.RegularExpressions;
 using Avalonia;
@@ -2946,14 +2947,18 @@ public partial class PlanViewerControl : UserControl
         var topLevel = TopLevel.GetTopLevel(this);
         if (topLevel == null) return;
 
+        bool gzip = GzipCheckBox.IsChecked ?? true;
+        string baseName = $"plan_{DateTime.Now:yyyyMMdd_HHmmss}.sqlplan";
+
         var file = await topLevel.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
             Title = "Save Plan",
-            DefaultExtension = "sqlplan",
-            SuggestedFileName = $"plan_{DateTime.Now:yyyyMMdd_HHmmss}.sqlplan",
+            DefaultExtension = gzip ? "gz" : "sqlplan",
+            SuggestedFileName = gzip ? $"{baseName}.gz" : baseName,
             FileTypeChoices = new[]
             {
                 new FilePickerFileType("SQL Plan Files") { Patterns = new[] { "*.sqlplan" } },
+                new FilePickerFileType("Gzipped SQL Plan Files") { Patterns = new[] { "*.sqlplan.gz" } },
                 new FilePickerFileType("XML Files") { Patterns = new[] { "*.xml" } },
                 new FilePickerFileType("All Files") { Patterns = new[] { "*.*" } }
             }
@@ -2962,8 +2967,17 @@ public partial class PlanViewerControl : UserControl
         if (file != null)
         {
             await using var stream = await file.OpenWriteAsync();
-            await using var writer = new StreamWriter(stream);
-            await writer.WriteAsync(_currentPlan.RawXml);
+            if (gzip)
+            {
+                await using var gzipStream = new GZipStream(stream, CompressionLevel.Optimal);
+                await using var writer = new StreamWriter(gzipStream);
+                await writer.WriteAsync(_currentPlan.RawXml);
+            }
+            else
+            {
+                await using var writer = new StreamWriter(stream);
+                await writer.WriteAsync(_currentPlan.RawXml);
+            }
         }
     }
 

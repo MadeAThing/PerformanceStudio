@@ -30,6 +30,10 @@
                     <Button Content="Save .sqlplan" Click="SavePlan_Click" Height="28" Padding="8,0"
                             ToolTip.Tip="Save plan as .sqlplan file"
                             Theme="{StaticResource AppButton}"/>
+                    <CheckBox x:Name="GzipCheckBox" Content="Gzip" IsChecked="True"
+                              FontSize="12" VerticalAlignment="Center" Margin="6,0,0,0"
+                              Foreground="{DynamicResource ForegroundBrush}"
+                              ToolTip.Tip="Compress saved file as .sqlplan.gz"/>
                     <TextBlock Text="|" VerticalAlignment="Center"
                                Foreground="{DynamicResource ForegroundBrush}" Margin="12,0"
                                x:Name="StatementsButtonSeparator" IsVisible="False"/>
