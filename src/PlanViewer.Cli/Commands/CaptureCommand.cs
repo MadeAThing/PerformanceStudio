@@ -5,6 +5,7 @@ using Microsoft.Data.SqlClient;
 using PlanViewer.Core.Interfaces;
 using PlanViewer.Core.Models;
 using PlanViewer.Core.Services;
+using PlanViewer.Cli;
 
 namespace PlanViewer.Cli.Commands;
 
@@ -114,10 +115,12 @@ public static class CaptureCommand
                 return;
             }
 
+            var resolved = ConnectionResolver.Resolve(server);
+
             string connectionString;
             if (!string.IsNullOrEmpty(login))
             {
-                connectionString = BuildDirectConnectionString(server, database, login, password ?? "", trustCert);
+                connectionString = BuildDirectConnectionString(resolved.ServerName, database, login, password ?? "", trustCert);
             }
             else if (credentialService != null)
             {
@@ -126,7 +129,7 @@ public static class CaptureCommand
                     "windows" => AuthenticationTypes.Windows,
                     "sql" => AuthenticationTypes.SqlServer,
                     "entra" => AuthenticationTypes.EntraMFA,
-                    null => credentialService.CredentialExists(server)
+                    null => credentialService.CredentialExists(resolved.CredentialId)
                         ? AuthenticationTypes.SqlServer
                         : AuthenticationTypes.Windows,
                     _ => throw new ArgumentException($"Unknown auth type: {auth}. Use: windows, sql, entra")
@@ -134,7 +137,7 @@ public static class CaptureCommand
 
                 var conn = new ServerConnection
                 {
-                    Id = server, ServerName = server, DisplayName = server,
+                    Id = resolved.CredentialId, ServerName = resolved.ServerName, DisplayName = server,
                     AuthenticationType = authType,
                     TrustServerCertificate = trustCert,
                     EncryptMode = trustCert ? "Optional" : "Mandatory"
@@ -148,11 +151,11 @@ public static class CaptureCommand
                 return;
             }
 
-            var isAzure = server.Contains(".database.windows.net", StringComparison.OrdinalIgnoreCase) ||
-                          server.Contains(".database.azure.com", StringComparison.OrdinalIgnoreCase);
+            var isAzure = resolved.ServerName.Contains(".database.windows.net", StringComparison.OrdinalIgnoreCase) ||
+                          resolved.ServerName.Contains(".database.azure.com", StringComparison.OrdinalIgnoreCase);
 
             var startUtc = DateTime.UtcNow;
-            Console.Error.Write($"[{startUtc:HH:mm:ss} UTC] Capturing actual plan on {server}/{database}... ");
+            Console.Error.Write($"[{startUtc:HH:mm:ss} UTC] Capturing actual plan on {resolved.ServerName}/{database}... ");
 
             string? planXml;
             string? captureError;
@@ -198,7 +201,7 @@ public static class CaptureCommand
 
             var report = new CaptureReport
             {
-                Server = server,
+                Server = resolved.ServerName,
                 Database = database,
                 StartTimeUtc = startUtc,
                 EndTimeUtc = endUtc,

@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging;
 using ModelContextProtocol.AspNetCore;
 using PlanViewer.App.Services;
 using PlanViewer.Core.Interfaces;
+using PlanViewer.Core.Services;
 
 namespace PlanViewer.App.Mcp;
 

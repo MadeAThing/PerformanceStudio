@@ -5,6 +5,7 @@ using PlanViewer.Core.Output;
 using PlanViewer.Core.Interfaces;
 using PlanViewer.Core.Models;
 using PlanViewer.Core.Services;
+using PlanViewer.Cli;
 
 namespace PlanViewer.Cli.Commands;
 
@@ -113,12 +114,14 @@ public static class QueryStoreCommand
             }
             else if (credentialService != null)
             {
+                var resolved = ConnectionResolver.Resolve(server);
+
                 var authType = auth?.ToLowerInvariant() switch
                 {
                     "windows" => AuthenticationTypes.Windows,
                     "sql" => AuthenticationTypes.SqlServer,
                     "entra" => AuthenticationTypes.EntraMFA,
-                    null => credentialService.CredentialExists(server)
+                    null => credentialService.CredentialExists(resolved.CredentialId)
                         ? AuthenticationTypes.SqlServer
                         : AuthenticationTypes.Windows,
                     _ => throw new ArgumentException($"Unknown auth type: {auth}")
@@ -126,7 +129,7 @@ public static class QueryStoreCommand
 
                 var conn = new ServerConnection
                 {
-                    Id = server, ServerName = server, DisplayName = server,
+                    Id = resolved.CredentialId, ServerName = resolved.ServerName, DisplayName = server,
                     AuthenticationType = authType,
                     TrustServerCertificate = trustCert,
                     EncryptMode = trustCert ? "Optional" : "Mandatory"

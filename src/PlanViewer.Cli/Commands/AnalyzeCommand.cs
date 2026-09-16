@@ -8,6 +8,7 @@ using PlanViewer.Core.Output;
 using PlanViewer.Core.Interfaces;
 using PlanViewer.Core.Models;
 using PlanViewer.Core.Services;
+using PlanViewer.Cli;
 
 namespace PlanViewer.Cli.Commands;
 
@@ -399,9 +400,14 @@ public static class AnalyzeCommand
             return;
         }
 
+        // Resolve --server against saved GUI connections (matches by hostname, display name,
+        // or GUID) so a credential saved under a GUID key is found the same way it is for a
+        // live run — see ConnectionResolver.
+        var resolved = ConnectionResolver.Resolve(server);
+
         // Determine auth method and effective login for display
         bool usingDirectLogin    = !string.IsNullOrEmpty(login);
-        bool usingCredStore      = !usingDirectLogin && credentialService?.CredentialExists(server) == true;
+        bool usingCredStore      = !usingDirectLogin && credentialService?.CredentialExists(resolved.CredentialId) == true;
         bool usingWindowsAuth    = !usingDirectLogin && !usingCredStore && auth?.ToLowerInvariant() != "sql" && auth?.ToLowerInvariant() != "entra";
         bool usingEntra          = auth?.ToLowerInvariant() == "entra";
         string? credStoreLogin   = null;
@@ -409,7 +415,7 @@ public static class AnalyzeCommand
         if (usingCredStore && credentialService != null)
         {
             // Retrieve username from store for display (password stays in the store)
-            var cred = credentialService.GetCredential(server);
+            var cred = credentialService.GetCredential(resolved.CredentialId);
             credStoreLogin = cred?.Username;
         }
 
@@ -446,7 +452,7 @@ public static class AnalyzeCommand
         {
             if (usingDirectLogin)
             {
-                connectionString = BuildDirectConnectionString(server, database ?? "master", login!, password ?? "", trustCert);
+                connectionString = BuildDirectConnectionString(resolved.ServerName, database ?? "master", login!, password ?? "", trustCert);
             }
             else if (credentialService != null)
             {
@@ -574,10 +580,12 @@ public static class AnalyzeCommand
         }
 
         // Build connection string
+        var resolvedServerName = ConnectionResolver.Resolve(server).ServerName;
+
         string connectionString;
         if (!string.IsNullOrEmpty(login))
         {
-            connectionString = BuildDirectConnectionString(server, database, login, password ?? "", trustCert);
+            connectionString = BuildDirectConnectionString(resolvedServerName, database, login, password ?? "", trustCert);
         }
         else if (credentialService != null)
         {
@@ -679,13 +687,13 @@ public static class AnalyzeCommand
         var outDir = outputDir?.FullName ?? Directory.GetCurrentDirectory();
         Directory.CreateDirectory(outDir);
 
-        var isAzure = IsAzureSqlDb(server);
+        var isAzure = IsAzureSqlDb(resolvedServerName);
         var planType = estimated ? "estimated" : "actual";
         var pad = RepeatPadWidth(repeat);
 
         var totalRuns = sqlInputs.Count * repeat;
         var repeatNote = repeat > 1 ? $" × {repeat} repeats = {totalRuns} runs" : "";
-        Console.Error.WriteLine($"Capturing {planType} plans from {server}/{database} ({sqlInputs.Count} input{(sqlInputs.Count == 1 ? "" : "s")}{repeatNote})");
+        Console.Error.WriteLine($"Capturing {planType} plans from {resolvedServerName}/{database} ({sqlInputs.Count} input{(sqlInputs.Count == 1 ? "" : "s")}{repeatNote})");
         Console.Error.WriteLine();
 
         var errors = 0;
@@ -807,27 +815,32 @@ public static class AnalyzeCommand
     private static ServerConnection BuildServerConnection(
         string server, string? auth, bool trustCert, ICredentialService credentialService)
     {
+        // Resolves a saved GUI connection's real hostname + credential-store key when `server`
+        // matches one by name/display-name/id, otherwise falls back to treating it as a literal
+        // hostname (and credential key) — see ConnectionResolver.
+        var resolved = ConnectionResolver.Resolve(server);
+
         var authType = auth?.ToLowerInvariant() switch
         {
             "windows" => AuthenticationTypes.Windows,
             "sql"     => AuthenticationTypes.SqlServer,
             "entra"   => AuthenticationTypes.EntraMFA,
-            null => credentialService.CredentialExists(server)
+            null => credentialService.CredentialExists(resolved.CredentialId)
                 ? AuthenticationTypes.SqlServer
                 : AuthenticationTypes.Windows,
             _ => throw new ArgumentException($"Unknown auth type: {auth}. Use: windows, sql, entra")
         };
 
-        if (authType == AuthenticationTypes.SqlServer && !credentialService.CredentialExists(server))
+        if (authType == AuthenticationTypes.SqlServer && !credentialService.CredentialExists(resolved.CredentialId))
         {
-            Console.Error.WriteLine($"No credential found for {server}. Run: planview credential add {server} --user <username>");
+            Console.Error.WriteLine($"No credential found for {server}. Run: planview credential add {resolved.ServerName} --user <username>");
             Environment.ExitCode = 1;
         }
 
         return new ServerConnection
         {
-            Id = server,
-            ServerName = server,
+            Id = resolved.CredentialId,
+            ServerName = resolved.ServerName,
             DisplayName = server,
             AuthenticationType = authType,
             TrustServerCertificate = trustCert,

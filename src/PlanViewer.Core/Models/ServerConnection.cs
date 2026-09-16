@@ -52,13 +52,13 @@ public class ServerConnection
         {
             case AuthenticationTypes.EntraMFA:
                 builder.Authentication = SqlAuthenticationMethod.ActiveDirectoryInteractive;
-                var mfaCred = credentialService.GetCredential(Id);
+                var mfaCred = ResolveCredential(credentialService);
                 if (mfaCred.HasValue && !string.IsNullOrEmpty(mfaCred.Value.Username))
                     builder.UserID = mfaCred.Value.Username;
                 break;
 
             case AuthenticationTypes.SqlServer:
-                var cred = credentialService.GetCredential(Id);
+                var cred = ResolveCredential(credentialService);
                 if (cred.HasValue)
                 {
                     builder.UserID = cred.Value.Username;
@@ -79,6 +79,14 @@ public class ServerConnection
         if (AuthenticationType is AuthenticationTypes.Windows or AuthenticationTypes.EntraMFA)
             return true;
 
-        return credentialService.CredentialExists(Id);
+        return credentialService.CredentialExists(Id) || credentialService.CredentialExists(ServerName);
     }
+
+    /// <summary>
+    /// Credentials are keyed by Id when saved via the GUI (a stable GUID, independent of
+    /// hostname) or by ServerName when saved via the CLI's `credential add &lt;hostname&gt;`.
+    /// Try both so either tool can use credentials the other saved.
+    /// </summary>
+    private (string Username, string Password)? ResolveCredential(ICredentialService credentialService)
+        => credentialService.GetCredential(Id) ?? credentialService.GetCredential(ServerName);
 }

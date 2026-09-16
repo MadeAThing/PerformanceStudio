@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using PlanViewer.Core.Models;
 
-namespace PlanViewer.App.Services;
+namespace PlanViewer.Core.Services;
 
 public class ConnectionStore
 {
