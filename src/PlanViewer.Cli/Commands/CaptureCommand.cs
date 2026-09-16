@@ -196,7 +196,15 @@ public static class CaptureCommand
             }
             else
             {
-                Console.Error.WriteLine($"FAILED ({duration.TotalSeconds:F1}s) — {captureError ?? "no plan captured"}");
+                // ExecuteForActualPlanAsync returns (null, null) when the query ran fine but SQL
+                // Server never emitted a plan XML result set — observed for literal, no-FROM
+                // SELECTs (e.g. "SELECT 1;"), which SET STATISTICS XML ON doesn't report a plan
+                // for even though SET SHOWPLAN_XML (estimated) does. Real queries/procs aren't
+                // affected — only used here to give --out a message instead of a bare null.
+                captureError ??= "No plan captured — query ran but produced no plan XML " +
+                                  "(seen for literal no-FROM SELECTs; try --estimated to confirm a plan exists, " +
+                                  "or capture a query that touches a table/proc).";
+                Console.Error.WriteLine($"FAILED ({duration.TotalSeconds:F1}s) — {captureError}");
             }
 
             var report = new CaptureReport
