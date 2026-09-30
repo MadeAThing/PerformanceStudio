@@ -16,6 +16,10 @@ public class KeychainCredentialService : ICredentialService
 
     public bool SaveCredential(string serverId, string username, string password)
     {
+        // -U matches on service+account, so a changed username would add a second item
+        // and lookups by service would keep returning the old one. Drop old entries first.
+        while (CredentialExists(serverId) && DeleteCredential(serverId)) { }
+
         var (exitCode, _) = RunSecurity(
             "add-generic-password",
             "-s", ServiceName(serverId),
